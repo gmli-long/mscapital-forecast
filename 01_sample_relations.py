@@ -2,7 +2,9 @@ import pyarrow.feather as feather
 import pandas as pd
 import numpy as np
 
-BASE = r"C:\Users\21597\.cache\kagglehub\competitions\ms-capital-real-financial-market-forecasting"
+from config import DATA_DIR
+
+BASE = str(DATA_DIR)
 
 sub = pd.read_csv(BASE + "\\submission.csv")
 print("=== submission.csv ===")

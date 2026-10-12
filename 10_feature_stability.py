@@ -12,9 +12,11 @@ import lightgbm as lgb
 import time
 import os
 
-BASE = r"C:\Users\21597\.cache\kagglehub\competitions\ms-capital-real-financial-market-forecasting"
-FEAT = r"c:\Users\21597\Desktop\spider_redbook\mscapital_forecast\features"
-OUT_STAB = r"c:\Users\21597\Desktop\spider_redbook\mscapital_forecast\feature_stability.csv"
+from config import DATA_DIR, FEATURES_DIR, REPO_DIR
+
+BASE = str(DATA_DIR)
+FEAT = str(FEATURES_DIR)
+OUT_STAB = str(REPO_DIR / "feature_stability.csv")
 
 NUM_ROUNDS = 155
 CUM_THRESH = 0.95
@@ -132,6 +134,6 @@ print(f"delta  : RMSE {(prn.rmse.mean()-full.rmse.mean()):+.6f}  "
 print(f"\ntotal {time.time()-t0:.1f}s")
 
 # save pruned feature list
-with open(r"c:\Users\21597\Desktop\spider_redbook\mscapital_forecast\pruned_features.txt", "w") as fh:
+with open(REPO_DIR / "pruned_features.txt", "w") as fh:
     fh.write("\n".join(kept))
 print("[saved] pruned_features.txt")

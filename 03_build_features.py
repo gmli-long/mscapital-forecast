@@ -7,8 +7,10 @@ import polars as pl
 import os
 import time
 
-BASE = r"C:\Users\21597\.cache\kagglehub\competitions\ms-capital-real-financial-market-forecasting"
-OUT = r"c:\Users\21597\Desktop\spider_redbook\mscapital_forecast\features"
+from config import DATA_DIR, FEATURES_DIR
+
+BASE = str(DATA_DIR)
+OUT = str(FEATURES_DIR)
 os.makedirs(OUT, exist_ok=True)
 
 SBP = pl.col("seconds_before_predict")

@@ -1,6 +1,8 @@
 import polars as pl
 
-BASE = r"C:\Users\21597\.cache\kagglehub\competitions\ms-capital-real-financial-market-forecasting"
+from config import DATA_DIR
+
+BASE = str(DATA_DIR)
 
 for split in ["train", "test"]:
     for name in ["market", "order", "transaction"]:

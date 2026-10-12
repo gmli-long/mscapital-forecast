@@ -4,8 +4,10 @@ import pyarrow.parquet as pq
 import os
 import time
 
-BASE = r"C:\Users\21597\.cache\kagglehub\competitions\ms-capital-real-financial-market-forecasting"
-OUT = r"c:\Users\21597\Desktop\spider_redbook\mscapital_forecast\parquet"
+from config import DATA_DIR, PARQUET_DIR
+
+BASE = str(DATA_DIR)
+OUT = str(PARQUET_DIR)
 
 FILES = [
     ("train", "market"),

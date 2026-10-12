@@ -116,7 +116,21 @@ bagging_fraction=0.8, bagging_freq=1, lambda_l2=1.0, seed=42
 
 ### 数据准备
 
-原始数据由 Kaggle 竞赛提供，建议通过 `kagglehub` 下载后存放于标准缓存路径，或在各脚本顶部修改 `BASE`（当前指向 `~/.cache/kagglehub/competitions/ms-capital-real-financial-market-forecasting`）。
+原始数据由 Kaggle 竞赛提供，通过 `kagglehub` 下载后默认存放于 `~/.cache/kagglehub/competitions/ms-capital-real-financial-market-forecasting`。
+
+所有脚本的路径统一由 `config.py` 管理，无需在脚本内修改硬编码路径：
+
+- 原始数据目录默认取上述 kagglehub 缓存路径，若存放在自定义位置，设置环境变量即可覆盖：
+
+  ```bash
+  # Windows (PowerShell)
+  $env:KAGGLE_DATA_DIR = "D:\data\ms-capital"
+
+  # Linux / macOS
+  export KAGGLE_DATA_DIR=/path/to/ms-capital
+  ```
+
+- `parquet/`（转换中间产物）与 `features/`（聚合特征）等派生产物路径均相对仓库根目录推导，克隆到任意位置后开箱即用。
 
 ### 步骤
 
@@ -153,6 +167,7 @@ python 07_submission.py
 
 ```
 .
+├── config.py                  # 统一路径配置（数据目录 + 产物目录）
 ├── 00_inspect.py              # 数据 schema / 行数探查
 ├── 01_sample_relations.py     # sample_id 关联关系
 ├── 02_peek.py                 # 快速抽样查看

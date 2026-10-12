@@ -3,8 +3,10 @@ import duckdb
 import os
 import time
 
-PARQ = r"c:\Users\21597\Desktop\spider_redbook\mscapital_forecast\parquet"
-OUT = r"c:\Users\21597\Desktop\spider_redbook\mscapital_forecast\features"
+from config import PARQUET_DIR, FEATURES_DIR
+
+PARQ = str(PARQUET_DIR)
+OUT = str(FEATURES_DIR)
 os.makedirs(OUT, exist_ok=True)
 
 

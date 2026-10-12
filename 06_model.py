@@ -5,8 +5,10 @@ import lightgbm as lgb
 import time
 import os
 
-BASE = r"C:\Users\21597\.cache\kagglehub\competitions\ms-capital-real-financial-market-forecasting"
-FEAT = r"c:\Users\21597\Desktop\spider_redbook\mscapital_forecast\features"
+from config import DATA_DIR, FEATURES_DIR, REPO_DIR
+
+BASE = str(DATA_DIR)
+FEAT = str(FEATURES_DIR)
 
 label = pd.read_feather(BASE + "\\train\\label.feather")
 print("label:", label.shape)
@@ -89,5 +91,5 @@ imp = pd.Series(model.feature_importance("gain"), index=feature_cols).sort_value
 print("\n=== top 30 importances ===")
 print(imp.head(30).to_string())
 
-model.save_model(r"c:\Users\21597\Desktop\spider_redbook\mscapital_forecast\lgb_baseline.txt")
+model.save_model(str(REPO_DIR / "lgb_baseline.txt"))
 print("\n[saved] lgb_baseline.txt")

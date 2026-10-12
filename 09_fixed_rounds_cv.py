@@ -11,10 +11,12 @@ import lightgbm as lgb
 import time
 import os
 
-BASE = r"C:\Users\21597\.cache\kagglehub\competitions\ms-capital-real-financial-market-forecasting"
-FEAT = r"c:\Users\21597\Desktop\spider_redbook\mscapital_forecast\features"
-OUT = r"c:\Users\21597\Desktop\spider_redbook\mscapital_forecast\cv_fixed_results.csv"
-CV_EARLY = r"c:\Users\21597\Desktop\spider_redbook\mscapital_forecast\cv_results.csv"
+from config import DATA_DIR, FEATURES_DIR, REPO_DIR
+
+BASE = str(DATA_DIR)
+FEAT = str(FEATURES_DIR)
+OUT = str(REPO_DIR / "cv_fixed_results.csv")
+CV_EARLY = str(REPO_DIR / "cv_results.csv")
 
 NUM_ROUNDS = 155
 

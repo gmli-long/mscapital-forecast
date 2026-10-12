@@ -10,10 +10,12 @@ import lightgbm as lgb
 import time
 import os
 
-BASE = r"C:\Users\21597\.cache\kagglehub\competitions\ms-capital-real-financial-market-forecasting"
-FEAT = r"c:\Users\21597\Desktop\spider_redbook\mscapital_forecast\features"
-STAB = r"c:\Users\21597\Desktop\spider_redbook\mscapital_forecast\feature_stability.csv"
-OUT = r"c:\Users\21597\Desktop\spider_redbook\mscapital_forecast\prune_scan.csv"
+from config import DATA_DIR, FEATURES_DIR, REPO_DIR
+
+BASE = str(DATA_DIR)
+FEAT = str(FEATURES_DIR)
+STAB = str(REPO_DIR / "feature_stability.csv")
+OUT = str(REPO_DIR / "prune_scan.csv")
 
 NUM_ROUNDS = 155
 K_GRID = [10, 15, 20, 25, 30, 40, 50, 61, 71]

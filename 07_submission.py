@@ -5,8 +5,10 @@ import lightgbm as lgb
 import time
 import os
 
-BASE = r"C:\Users\21597\.cache\kagglehub\competitions\ms-capital-real-financial-market-forecasting"
-FEAT = r"c:\Users\21597\Desktop\spider_redbook\mscapital_forecast\features"
+from config import DATA_DIR, FEATURES_DIR, REPO_DIR
+
+BASE = str(DATA_DIR)
+FEAT = str(FEATURES_DIR)
 
 label = pd.read_feather(BASE + "\\train\\label.feather")
 
@@ -45,14 +47,14 @@ best_iter = int(os.environ.get("BEST_ITER", "600"))
 model = lgb.train(params, dtr, num_boost_round=best_iter)
 print(f"full train done in {time.time()-t:.1f}s  rounds={best_iter}")
 
-model.save_model(r"c:\Users\21597\Desktop\spider_redbook\mscapital_forecast\lgb_full.txt")
+model.save_model(str(REPO_DIR / "lgb_full.txt"))
 
 test = load_features("test")
 print("test:", test.shape)
 pred = model.predict(test[feature_cols], num_iteration=model.best_iteration)
 
 sub = pd.DataFrame({"sample_id": test["sample_id"], "prediction": pred})
-sub.to_csv(r"c:\Users\21597\Desktop\spider_redbook\mscapital_forecast\submission.csv", index=False)
+sub.to_csv(str(REPO_DIR / "submission.csv"), index=False)
 print("submission:", sub.shape)
 print(sub.head())
 print("\nprediction stats:")

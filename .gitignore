@@ -1,0 +1,17 @@
+# 数据与中间产物（体积大，不入库；按 README 步骤本地重生成）
+parquet/
+features/
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+
+# LightGBM 模型日志/转储
+lgb_*.txt
+
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

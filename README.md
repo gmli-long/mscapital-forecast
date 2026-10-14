@@ -29,12 +29,17 @@
 
 > `seconds_before_predict`（记作 `sbp`）：该条记录距「预测时刻」的秒数，是构造时间加权的关键。
 
+**数据字典核验（`13_data_checks.py`）**：
+
+- **单一资产/指数**：中间价高度集中在 1.0 附近（样本内标准差仅 ~0.0015，跨样本分布在 0.5~1.1），价格水平主要由时间（月份）驱动，而非多资产各一档；
+- **`side` 编码方向**：经主动成交方向检验确认 `0=买 / 1=卖` —— side=0 有 ~92% 成交价高于中间价（主动吃卖一），side=1 仅 ~4%；同时 `t_net_vol`、`o_net_vol` 与 `target` 相关系数均为正（+0.028 / +0.004），与「买压→上涨」的经济含义一致。
+
 ---
 
 ## 2. 方法与管道
 
 ```
-01 探查/校验     00_inspect / 01_sample_relations / 02_peek
+01 探查/校验     00_inspect / 01_sample_relations / 02_peek / 13_data_checks
 02 格式转换      04_convert_parquet.py   feather → parquet（行组 1M + zstd）
 03 特征工程      05_build_features_duckdb.py  DuckDB 流式 SQL 聚合 → 每样本 71 维
 04 建模验证      06_model.py              LightGBM + 按月时序切分
@@ -153,6 +158,7 @@ bagging_fraction=0.8, bagging_freq=1, lambda_l2=1.0, seed=42
 python 00_inspect.py
 python 01_sample_relations.py
 python 02_peek.py
+python 13_data_checks.py   # 数据字典核验（单资产 / side 编码方向）
 
 # 2. feather → parquet（列式 + zstd，供 DuckDB 高效读取）
 python 04_convert_parquet.py
@@ -198,6 +204,7 @@ python 07_submission.py
 ├── 10_feature_stability.py    # 特征重要性稳定性分析
 ├── 11_prune_scan.py           # Top-K 剪枝扫描
 ├── 12_significance.py         # 统计显著性检验 + seed 敏感性
+├── 13_data_checks.py          # 数据字典核验（单资产 / side 编码方向）
 ├── cv_results.csv             # 早停多折结果
 ├── cv_fixed_results.csv       # 固定轮多折结果
 ├── feature_stability.csv      # 特征稳定性表

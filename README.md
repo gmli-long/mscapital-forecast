@@ -1,6 +1,6 @@
 # MS Capital 真实金融市场预测
 
-> Kaggle 竞赛「[MS Capital – Real Financial Market Forecasting](https://www.kaggle.com/competitions/ms-capital-real-financial-market-forecasting)」参赛项目 —— 基于订单簿快照与逐笔委托/成交流的高频金融时序回归预测。
+> Kaggle 竞赛「[MS Capital – Real Financial Market Forecasting](https://www.kaggle.com/competitions/ms-capital-real-financial-market-forecasting)」的数据本地复现项目 —— 基于订单簿快照与逐笔委托/成交流的高频金融时序回归预测。**本地自评、未提交竞赛排名**。
 
 端到端完成：数据探查 → 列式存储转换 → 流式特征工程（71 维）→ LightGBM 时序建模 → 多折时间交叉验证 → 特征稳定性分析与剪枝 → 统计显著性检验 → 提交文件生成。
 

@@ -27,12 +27,12 @@
 - `transaction`：`sample_id, seconds_before_predict, price, volume, side`
 - `label`：`sample_id, month, target`
 
-> `seconds_before_predict`（记作 `sbp`）：该条记录距「预测时刻」的秒数，是构造时间加权的关键。
+> `seconds_before_predict`（记作 `sbp`）：该条记录距「预测时刻」的秒数，是构造时间加权的关键。三类流的时间跨度不同：`market` 快照覆盖 **0–600s**，而 `order` / `transaction` 逐笔流仅覆盖 **0–60s**——因此 `t_*` / `o_*` 的 `exp(-sbp/600)` 权重退化为近乎等权（`e^-0.1≈0.90` 到 `1.0`），「600s 中期」的衰减含义只对 `m_*` 成立。
 
 **数据字典核验（`13_data_checks.py`）**：
 
-- **单一资产/指数**：中间价高度集中在 1.0 附近（样本内标准差仅 ~0.0015，跨样本分布在 0.5~1.1），价格水平主要由时间（月份）驱动，而非多资产各一档；
-- **`side` 编码方向**：经主动成交方向检验确认 `0=买 / 1=卖` —— side=0 有 ~92% 成交价高于中间价（主动吃卖一），side=1 仅 ~4%；同时 `t_net_vol`、`o_net_vol` 与 `target` 相关系数均为正（+0.028 / +0.004），与「买压→上涨」的经济含义一致。
+- **单一资产/指数**：按 `month` 分组的中间价分布显示，每个月都是同一形状——主体集中在 ~1.0（月份均值 0.99–1.00 几乎不变），外加极少量（~0.5%）落在 0.5–0.9 的低价样本散落于所有月份；既无价格时间趋势，也非多资产的多价格峰，配合样本内 mid 标准差仅 ~0.0015，判为单一资产。`sample_id` 与 `month` 严格单调（spearman≈0.9999，71 个月区间零重叠），为时序口径的误差序列提供排序依据；
+- **`side` 编码方向**：`0=买 / 1=卖` 经主动成交方向检验确认——将 `sbp` 取整后对齐成交与快照（对齐率 ~39%，约 40 万条），side=0 有 ~88% 成交价高于中间价、~87% 落在卖一及以上（主动吃卖一），side=1 仅 ~9%（主动吃买一）。
 
 ---
 
@@ -70,7 +70,7 @@ bagging_fraction=0.8, bagging_freq=1, lambda_l2=1.0, seed=42
 - **严格时间切分**：按月份切分，`0–63 月训练 / 64–70 月验证`，不做随机划分，避免时间泄露；
 - **6 折 expanding walk-forward**：每折验证「未来 7 个月」，训练此前全部月份，评估泛化稳定性；
 - **固定轮数复验**：以固定 155 轮（= 末折早停 best_iteration，无早停）重跑 6 折，量化早停带来的乐观偏差；
-- **全量训练与提交**：以 178 轮（= 155 × 1.15，为全量数据上浮）在全 71 月上重训，测试推理生成 `submission.csv`。
+- **全量训练与提交**：沿用固定 155 轮（= 末折早停 best_iteration）在全 71 月上重训，测试推理生成 `submission.csv`。
 
 ### 2.3 特征精炼
 
@@ -108,21 +108,25 @@ bagging_fraction=0.8, bagging_freq=1, lambda_l2=1.0, seed=42
 
 ### 3.3 特征剪枝
 
-- 71 维 → **40 维**即可达到几乎同等精度（RMSE 0.002486 vs 全量 0.002486）；
-- 高价值特征集中于「净持仓流 / 价差-中间价波动」类，长尾特征贡献趋零；Top 特征如 `t_net_vol_10s`、`m_spread_std`、`t_netvol_w30`。
+两个口径并存，含义不同：
+
+- **拐点 40**：按跨折平均贡献排序后扫描 `K={10,…,71}`，K=40 起 RMSE 基本不再下降（0.002486），再往上边际≈0——这是「剪枝维数」的口径；
+- **95% 累计贡献 61**：`cum_mean_share ≤ 95%` 规则选出的特征数，写进 `pruned_features.txt`（顺序 = `feature_stability.csv` top-61），比 40 更保守；
+- 高价值特征集中于「净持仓流 / 价差-中间价波动」类，Top 特征如 `t_net_vol_10s`、`m_spread_std`、`t_netvol_w30`；长尾特征贡献趋零。
 
 ### 3.4 统计显著性检验与 seed 敏感性
 
-合并 6 折 walk-forward 的 743,695 个验证样本，检验「优于零预测基线」是否为噪声：
+合并 6 折 walk-forward 的 743,695 个验证样本（pooled 口径），检验「优于零预测基线」是否为噪声：
 
 | 检验 | 结果 | 结论 |
 |------|------|------|
-| Diebold-Mariano（HAC，lag≤5） | z = 26.3，p ≈ 0 | 显著优于零预测 |
-| 配对 Bootstrap（B=5000） | 损失差 95% CI = [9.0e-8, 1.0e-7]，不含 0 | 稳健排除噪声 |
-| Pearson 相关显著性 | r = 0.1207，95% CI = [0.118, 0.123]，z = 104.6 | 显著但微小 |
+| Diebold-Mariano（HAC，max_lag ∈ {0,5,10,20,40} 扫描） | z = 25.9 ~ 26.3 稳定，p ≈ 0 | 不依赖 lag 选择，显著优于零预测 |
+| Moving-block Bootstrap（L=20, B=5000） | 损失差 95% CI = [8.6e-8, 1.0e-7]，不含 0 | 保留时间自相关，稳健排除噪声 |
+| Pearson 相关显著性 | r = 0.1207，95% CI = [0.1185, 0.1230]，z = 104.6 | 显著但微小 |
 
-- **seed 敏感性**：固定 155 轮、5 个 seed（42/0/1/7/123）重训末折（64–70），`RMSE/base0` 全部落在 **0.991~0.992**（均 < 1），说明「优于零预测」不依赖特定随机种子。
-- 结论：模型对真实目标有**统计显著但微弱**的边际预测力（相对零预测提升 ≈ 0.7%）。
+- pooled RMSE = **0.002520**，零预测基线 RMSE = 0.002538，相对提升 **0.725%**。
+- **seed 敏感性**：固定 155 轮、**20 个 seed** 单线程重训末折（64–70）以隔离线程调度噪声，`RMSE/base0` 全部落在 **[0.9913, 0.9921]**（均 < 1），「优于零预测」不依赖特定随机种子（最差 seed=1）。
+- **口径说明**：大样本下 DM/p 值几乎必然显著——它只回答「提升是否恰好为 0」，不回答「是否够用」。结论是提升**统计显著非零但量级微弱**（0.725%）；是否值得实盘须另按交易成本评估。
 
 ---
 
@@ -191,10 +195,11 @@ python 07_submission.py
 ```
 .
 ├── config.py                  # 统一路径配置（数据目录 + 产物目录）
+├── common.py                  # 共享参数/切分/数据加载（06-12 共用）
 ├── 00_inspect.py              # 数据 schema / 行数探查
 ├── 01_sample_relations.py     # sample_id 关联关系
 ├── 02_peek.py                 # 快速抽样查看
-├── 03_build_features.py       # Polars 流式聚合（早期方案，后被 DuckDB 方案取代）
+├── 03_build_features.py       # Polars 流式聚合（早期方案；group_by 聚合触发 DuplicateError，未根因即改用 DuckDB）
 ├── 04_convert_parquet.py      # feather → parquet 转换
 ├── 05_build_features_duckdb.py# DuckDB 流式特征聚合（核心）
 ├── 06_model.py                # 基线模型 + 时序验证
@@ -209,8 +214,9 @@ python 07_submission.py
 ├── cv_fixed_results.csv       # 固定轮多折结果
 ├── feature_stability.csv      # 特征稳定性表
 ├── prune_scan.csv             # 剪枝扫描结果
-├── significance_results.csv   # 显著性/seed 敏感性结果
-├── pruned_features.txt        # 精炼后的特征子集
+├── significance_results.csv   # 显著性/seed 敏感性结果（20 个 seed）
+├── significance_summary.csv   # 显著性汇总（DM z/p、block bootstrap CI、Pearson CI 全部落盘）
+├── pruned_features.txt        # 精炼后的特征子集（95% 累计贡献口径，61 维）
 └── submission.csv             # 最终提交文件
 ```
 

@@ -8,53 +8,25 @@ import pandas as pd
 import numpy as np
 import lightgbm as lgb
 import time
-import os
 
-from config import DATA_DIR, FEATURES_DIR, REPO_DIR
+from config import REPO_DIR
+from common import PARAMS, FOLDS, NUM_ROUNDS, load_X
 
-BASE = str(DATA_DIR)
-FEAT = str(FEATURES_DIR)
 STAB = str(REPO_DIR / "feature_stability.csv")
 OUT = str(REPO_DIR / "prune_scan.csv")
 
-NUM_ROUNDS = 155
+# 40 = 拐点/饱和点（K 再往上 RMSE 几乎不再降）；61 = 10_feature_stability 的
+# cum_mean_share<=95% 规则选出的特征数。两者口径不同，都扫一遍以便对照。
 K_GRID = [10, 15, 20, 25, 30, 40, 50, 61, 71]
 
-label = pd.read_feather(BASE + "\\train\\label.feather")
-feats = None
-for name in ["market", "order", "transaction"]:
-    f = pd.read_parquet(os.path.join(FEAT, f"train_{name}.parquet")).set_index("sample_id")
-    feats = f if feats is None else feats.join(f, how="left")
-
-X = feats.reset_index().merge(label[["sample_id", "month", "target"]], on="sample_id", how="inner")
-feature_cols = [c for c in X.columns if c not in ("sample_id", "month", "target")]
+X, feature_cols = load_X()
 
 # rank features by cross-fold stable importance
 stab = pd.read_csv(STAB).sort_values("mean_share", ascending=False).reset_index(drop=True)
 ranked = stab["feature"].tolist()
 
-params = dict(
-    objective="regression",
-    metric="rmse",
-    learning_rate=0.05,
-    num_leaves=127,
-    min_data_in_leaf=200,
-    feature_fraction=0.8,
-    bagging_fraction=0.8,
-    bagging_freq=1,
-    lambda_l2=1.0,
-    verbosity=-1,
-    seed=42,
-)
-
-folds = [
-    (28, [29, 30, 31, 32, 33, 34, 35]),
-    (35, [36, 37, 38, 39, 40, 41, 42]),
-    (42, [43, 44, 45, 46, 47, 48, 49]),
-    (49, [50, 51, 52, 53, 54, 55, 56]),
-    (56, [57, 58, 59, 60, 61, 62, 63]),
-    (63, [64, 65, 66, 67, 68, 69, 70]),
-]
+params = dict(PARAMS)
+folds = FOLDS
 
 
 def cv_run(cols):

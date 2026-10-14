@@ -3,31 +3,12 @@ import pandas as pd
 import numpy as np
 import lightgbm as lgb
 import time
-import os
 
-from config import DATA_DIR, FEATURES_DIR, REPO_DIR
+from config import REPO_DIR
+from common import PARAMS, load_X
 
-BASE = str(DATA_DIR)
-FEAT = str(FEATURES_DIR)
-
-label = pd.read_feather(BASE + "\\train\\label.feather")
-print("label:", label.shape)
-
-feats = None
-for name in ["market", "order", "transaction"]:
-    f = pd.read_parquet(os.path.join(FEAT, f"train_{name}.parquet"))
-    print(f"train_{name}: {f.shape}")
-    f = f.set_index("sample_id")
-    if feats is None:
-        feats = f
-    else:
-        feats = feats.join(f, how="left")
-
-X = feats.reset_index().merge(label[["sample_id", "month", "target"]], on="sample_id", how="inner")
-print("merged:", X.shape)
-
-feature_cols = [c for c in X.columns if c not in ("sample_id", "month", "target")]
-print("n_features:", len(feature_cols))
+X, feature_cols = load_X()
+print("merged:", X.shape, " n_features:", len(feature_cols))
 
 # ---- EDA ----
 print("\n=== target ===")
@@ -45,19 +26,7 @@ tr = X[~X["month"].isin(val_months)]
 va = X[X["month"].isin(val_months)]
 print(f"\ntrain months 0-63: {tr.shape},  val months 64-70: {va.shape}")
 
-params = dict(
-    objective="regression",
-    metric="rmse",
-    learning_rate=0.05,
-    num_leaves=127,
-    min_data_in_leaf=200,
-    feature_fraction=0.8,
-    bagging_fraction=0.8,
-    bagging_freq=1,
-    lambda_l2=1.0,
-    verbosity=-1,
-    seed=42,
-)
+params = dict(PARAMS)
 
 dtr = lgb.Dataset(tr[feature_cols], tr["target"])
 dva = lgb.Dataset(va[feature_cols], va["target"], reference=dtr)

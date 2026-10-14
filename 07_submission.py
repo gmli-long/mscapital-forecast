@@ -5,47 +5,24 @@ import lightgbm as lgb
 import time
 import os
 
-from config import DATA_DIR, FEATURES_DIR, REPO_DIR
+from config import REPO_DIR
+from common import PARAMS, NUM_ROUNDS, load_features, load_label
 
-BASE = str(DATA_DIR)
-FEAT = str(FEATURES_DIR)
-
-label = pd.read_feather(BASE + "\\train\\label.feather")
-
-
-def load_features(split):
-    feats = None
-    for name in ["market", "order", "transaction"]:
-        f = pd.read_parquet(os.path.join(FEAT, f"{split}_{name}.parquet")).set_index("sample_id")
-        feats = f if feats is None else feats.join(f, how="left")
-    return feats.reset_index()
-
+label = load_label()
 
 train = load_features("train").merge(label[["sample_id", "target"]], on="sample_id", how="inner")
 print("train:", train.shape)
 
 feature_cols = [c for c in train.columns if c not in ("sample_id", "target")]
 
-params = dict(
-    objective="regression",
-    metric="rmse",
-    learning_rate=0.05,
-    num_leaves=127,
-    min_data_in_leaf=200,
-    feature_fraction=0.8,
-    bagging_fraction=0.8,
-    bagging_freq=1,
-    lambda_l2=1.0,
-    verbosity=-1,
-    seed=42,
-)
+params = dict(PARAMS)
 
 dtr = lgb.Dataset(train[feature_cols], train["target"])
 t = time.time()
-# CV fold 5 (train months 0-63, the split closest to the full window) early-stopped
-# at best_iter=155. Retraining on all 71 months adds ~11% more data, so bump the
-# round count slightly (155 * 1.15 ~= 178). Override via BEST_ITER if needed.
-best_iter = int(os.environ.get("BEST_ITER", "178"))
+# 固定 155 轮 = fold5（train 0-63 / val 64-70）早停得到的最优轮数，与全量口径最接近。
+# 全量 71 个月仅比 64 个月多 ~11% 样本，最优轮数应略增或持平，取 155 保守不欠拟合。
+# 可通过环境变量 BEST_ITER 覆盖。
+best_iter = int(os.environ.get("BEST_ITER", str(NUM_ROUNDS)))
 model = lgb.train(params, dtr, num_boost_round=best_iter)
 print(f"full train done in {time.time()-t:.1f}s  rounds={best_iter}")
 
@@ -53,7 +30,7 @@ model.save_model(str(REPO_DIR / "lgb_full.txt"))
 
 test = load_features("test")
 print("test:", test.shape)
-pred = model.predict(test[feature_cols], num_iteration=model.best_iteration)
+pred = model.predict(test[feature_cols], num_iteration=best_iter)
 
 sub = pd.DataFrame({"sample_id": test["sample_id"], "prediction": pred})
 sub.to_csv(str(REPO_DIR / "submission.csv"), index=False)

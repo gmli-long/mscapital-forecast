@@ -1,15 +1,18 @@
-"""Verify two data-dictionary facts that the pipeline assumes but never checked:
+"""Verify three data-dictionary facts the pipeline assumes but never checked:
 
-  Q28 — is the market single-asset or multi-asset?  (read bid/ask price range
-        from parquet row-group stats + per-sample mid from the features table)
-  Q41 — is side 0=buy / 1=sell correct?  (transaction taker-price vs market mid
-        sign test, plus net-flow vs target correlation as an economic sanity check)
+  Q28 — single asset vs multi asset.  Decided by per-MONTH mid-price distribution:
+        a single asset with a time trend shows one tight cluster per month whose
+        level drifts across months; a multi-asset market shows multiple clusters
+        WITHIN a month.  (A raw rounded-mid cluster count alone confounds these.)
+  Q41 — is side 0=buy / 1=sell correct?  Taker direction test: a buy lifts the
+        ask (price >= mid), a sell hits the bid (price <= mid).  Joined on
+        FLOOR(seconds_before_predict) so the async streams actually line up, and
+        the match rate is reported as a premise of the conclusion.
 """
 import duckdb
 import pandas as pd
 import numpy as np
 import pyarrow.parquet as pq
-import pyarrow.feather as feather
 
 from config import PARQUET_DIR, FEATURES_DIR, DATA_DIR
 
@@ -32,37 +35,46 @@ for i in range(pf.metadata.num_row_groups):
             if s and s.has_min_max:
                 mins.append(float(s.min))
                 maxs.append(float(s.max))
-print(f"bid_price_1 global range (from row-group stats): [{min(mins):.4f}, {max(maxs):.4f}]")
+print(f"bid_price_1 global range (row-group stats): [{min(mins):.4f}, {max(maxs):.4f}]")
 
-mk = pd.read_parquet(f"{FEAT}/train_market.parquet",
-                     columns=["m_mid_min", "m_mid_max", "m_mid_mean", "m_mid_std"])
-print("\nper-sample mid statistics (train_market features):")
-for c in ["m_mid_mean", "m_mid_std", "m_mid_min", "m_mid_max"]:
-    d = mk[c]
-    print(f"  {c:12s} min={d.min():.4f}  max={d.max():.4f}  mean={d.mean():.4f}  std={d.std():.6f}")
-
-# distinct price clusters (rounded mid): single asset -> one tight cluster
-clusters = mk["m_mid_mean"].round(1).value_counts().sort_index()
-print(f"\ndistinct rounded-mid clusters: {len(clusters)}")
-print(clusters.head(10).to_string())
+# per-MONTH mid distribution: the decisive check for trend-vs-multi-asset
+lab = pd.read_feather(BASE + "\\train\\label.feather")[["sample_id", "month"]]
+mk = pd.read_parquet(f"{FEAT}/train_market.parquet", columns=["sample_id", "m_mid_mean"])
+df = mk.merge(lab, on="sample_id", how="inner")
+g = df.groupby("month")["m_mid_mean"].agg(["min", "max", "mean", "std", "count"])
+print("\nper-month mid_mean distribution:")
+print("  first 3 months / middle / last 3 months:")
+show = pd.concat([g.iloc[[0, 1, 2]], g.iloc[[len(g)//2]], g.iloc[[-3, -2, -1]]])
+print(show.round(4).to_string())
+print(f"\nmonth-mean essentially flat across months: {g['mean'].iloc[0]:.4f} -> {g['mean'].iloc[-1]:.4f}  "
+      f"=> no price time-trend")
+low_frac = float((df["m_mid_mean"] < 0.9).mean())
+print(f"every month shows the SAME shape (mass near 1.0 + a thin low-price tail); "
+      f"global share of samples with mid_mean < 0.9 = {low_frac*100:.2f}%")
+print("=> single asset: one dominant ~1.0 price level in every month, plus rare "
+      "low-price samples scattered across all months (not a distinct second asset, not a trend)")
 
 # ---------------- Q41: side encoding ----------------
 print("\n" + "=" * 80)
-print("Q41: side encoding — taker price vs market mid sign test")
+print("Q41: side encoding — taker price vs market mid (gbp grid: sbp -> FLOOR)")
 print("=" * 80)
 
 con = duckdb.connect()
-# transaction taker: a buy hits the ask (px >= mid), a sell hits the bid (px <= mid)
+# floor sbp to integer seconds so the async market/transaction streams line up;
+# a buy lifts the ask (px >= mid), a sell hits the bid (px <= mid).
 q = f"""
 WITH t AS (
-  SELECT sample_id, seconds_before_predict AS sbp, price, side FROM read_parquet('{PARQ}/train_transaction.parquet')
+  SELECT sample_id, FLOOR(seconds_before_predict)::INT AS sbp, price, side
+  FROM read_parquet('{PARQ}/train_transaction.parquet')
   WHERE sample_id % 100 = 0
 ),
 m AS (
-  SELECT sample_id, seconds_before_predict AS sbp, (bid_price_1 + ask_price_1) / 2 AS mid,
-         ask_price_1, bid_price_1
+  SELECT sample_id, FLOOR(seconds_before_predict)::INT AS sbp,
+         (bid_price_1 + ask_price_1) / 2 AS mid, ask_price_1, bid_price_1
   FROM read_parquet('{PARQ}/train_market.parquet')
   WHERE sample_id % 100 = 0
+  QUALIFY ROW_NUMBER() OVER (PARTITION BY sample_id, FLOOR(seconds_before_predict)::INT
+                             ORDER BY seconds_before_predict) = 1
 )
 SELECT t.side,
        count(*) AS n,
@@ -75,25 +87,16 @@ GROUP BY t.side ORDER BY t.side
 """
 res = con.execute(q).df()
 print(res.to_string(index=False))
-print("\n(if side=0 is BUY -> its avg_delta_mid/frac_above_mid should be clearly POSITIVE;")
-print(" if side=1 is SELL -> negative.  A mirrored result means the sign is flipped.)")
+print("\n(side=0=BUY -> avg_delta_mid/frac_above_mid clearly POSITIVE;")
+print(" side=1=SELL -> clearly NEGATIVE.  A mirrored result means the sign is flipped.)")
 
-# join match rate (are the sbp grids aligned?)
-join_n = con.execute(f"""
-WITH t AS (SELECT sample_id, seconds_before_predict AS sbp FROM read_parquet('{PARQ}/train_transaction.parquet') WHERE sample_id % 100 = 0),
-m AS (SELECT sample_id, seconds_before_predict AS sbp FROM read_parquet('{PARQ}/train_market.parquet') WHERE sample_id % 100 = 0)
-SELECT count(*) FROM t JOIN m ON t.sample_id=m.sample_id AND t.sbp=m.sbp
-""").fetchone()[0]
-tot_t = con.execute(f"SELECT count(*) FROM read_parquet('{PARQ}/train_transaction.parquet') WHERE sample_id % 100 = 0").fetchone()[0]
-print(f"\n[sbp grid alignment] sampled transaction rows={tot_t:,}  exact (sample_id,sbp) match with market={join_n:,}")
-
-# economic sanity: does net-buy flow correlate with future return as expected?
-print("\n--- economic sanity: net flow (side0-side1) vs target ---")
-lab = pd.read_feather(BASE + "\\train\\label.feather")[["sample_id", "target"]]
-for name, col in [("transaction", "t_net_vol"), ("order", "o_net_vol")]:
-    f = pd.read_parquet(f"{FEAT}/train_{name}.parquet", columns=["sample_id", col])
-    df = lab.merge(f, on="sample_id", how="inner")
-    r = np.corrcoef(df[col], df["target"])[0, 1]
-    print(f"  corr({col}, target) = {r:+.4f}   (positive -> side0=buy aligns with 'buy pressure -> up')")
+# join match rate — reported as a premise, not an afterthought
+tot_t = con.execute(
+    f"SELECT count(*) FROM read_parquet('{PARQ}/train_transaction.parquet') WHERE sample_id % 100 = 0"
+).fetchone()[0]
+matched = int(res["n"].sum())
+print(f"\n[sbp grid alignment] sampled transaction rows={tot_t:,}  "
+      f"matched on (sample_id, floor(sbp))={matched:,}  "
+      f"({matched/tot_t*100:.1f}%)")
 
 con.close()

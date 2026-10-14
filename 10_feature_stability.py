@@ -10,50 +10,19 @@ import pandas as pd
 import numpy as np
 import lightgbm as lgb
 import time
-import os
 
-from config import DATA_DIR, FEATURES_DIR, REPO_DIR
+from config import REPO_DIR
+from common import PARAMS, FOLDS, NUM_ROUNDS, load_X
 
-BASE = str(DATA_DIR)
-FEAT = str(FEATURES_DIR)
 OUT_STAB = str(REPO_DIR / "feature_stability.csv")
 
-NUM_ROUNDS = 155
 CUM_THRESH = 0.95
 TOP_K = 20
-MIN_FOLDS = 3
 
-label = pd.read_feather(BASE + "\\train\\label.feather")
-feats = None
-for name in ["market", "order", "transaction"]:
-    f = pd.read_parquet(os.path.join(FEAT, f"train_{name}.parquet")).set_index("sample_id")
-    feats = f if feats is None else feats.join(f, how="left")
+X, feature_cols = load_X()
 
-X = feats.reset_index().merge(label[["sample_id", "month", "target"]], on="sample_id", how="inner")
-feature_cols = [c for c in X.columns if c not in ("sample_id", "month", "target")]
-
-params = dict(
-    objective="regression",
-    metric="rmse",
-    learning_rate=0.05,
-    num_leaves=127,
-    min_data_in_leaf=200,
-    feature_fraction=0.8,
-    bagging_fraction=0.8,
-    bagging_freq=1,
-    lambda_l2=1.0,
-    verbosity=-1,
-    seed=42,
-)
-
-folds = [
-    (28, [29, 30, 31, 32, 33, 34, 35]),
-    (35, [36, 37, 38, 39, 40, 41, 42]),
-    (42, [43, 44, 45, 46, 47, 48, 49]),
-    (49, [50, 51, 52, 53, 54, 55, 56]),
-    (56, [57, 58, 59, 60, 61, 62, 63]),
-    (63, [64, 65, 66, 67, 68, 69, 70]),
-]
+params = dict(PARAMS)
+folds = FOLDS
 
 
 def run_folds(feats_cols, collect_imp=False):

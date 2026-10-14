@@ -42,8 +42,10 @@ params = dict(
 
 dtr = lgb.Dataset(train[feature_cols], train["target"])
 t = time.time()
-# use the best_iteration found in CV as a guide; retrain with fixed rounds ~ best*1.15 (train/cv shrink)
-best_iter = int(os.environ.get("BEST_ITER", "600"))
+# CV fold 5 (train months 0-63, the split closest to the full window) early-stopped
+# at best_iter=155. Retraining on all 71 months adds ~11% more data, so bump the
+# round count slightly (155 * 1.15 ~= 178). Override via BEST_ITER if needed.
+best_iter = int(os.environ.get("BEST_ITER", "178"))
 model = lgb.train(params, dtr, num_boost_round=best_iter)
 print(f"full train done in {time.time()-t:.1f}s  rounds={best_iter}")
 

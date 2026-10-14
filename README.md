@@ -2,7 +2,7 @@
 
 > Kaggle 竞赛「[MS Capital – Real Financial Market Forecasting](https://www.kaggle.com/competitions/ms-capital-real-financial-market-forecasting)」参赛项目 —— 基于订单簿快照与逐笔委托/成交流的高频金融时序回归预测。
 
-端到端完成：数据探查 → 列式存储转换 → 流式特征工程（71 维）→ LightGBM 时序建模 → 多折时间交叉验证 → 特征稳定性分析与剪枝 → 提交文件生成。
+端到端完成：数据探查 → 列式存储转换 → 流式特征工程（71 维）→ LightGBM 时序建模 → 多折时间交叉验证 → 特征稳定性分析与剪枝 → 统计显著性检验 → 提交文件生成。
 
 ---
 
@@ -64,7 +64,8 @@ bagging_fraction=0.8, bagging_freq=1, lambda_l2=1.0, seed=42
 
 - **严格时间切分**：按月份切分，`0–63 月训练 / 64–70 月验证`，不做随机划分，避免时间泄露；
 - **6 折 expanding walk-forward**：每折验证「未来 7 个月」，训练此前全部月份，评估泛化稳定性；
-- **固定轮数复验**：以固定 155 轮（无早停）重跑 6 折，量化早停带来的乐观偏差。
+- **固定轮数复验**：以固定 155 轮（= 末折早停 best_iteration，无早停）重跑 6 折，量化早停带来的乐观偏差；
+- **全量训练与提交**：以 178 轮（= 155 × 1.15，为全量数据上浮）在全 71 月上重训，测试推理生成 `submission.csv`。
 
 ### 2.3 特征精炼
 
@@ -98,12 +99,25 @@ bagging_fraction=0.8, bagging_freq=1, lambda_l2=1.0, seed=42
 | **均值** | — | **0.002485** | **0.1208** |
 
 - **早停偏差**：固定轮 vs 早停，RMSE 差异仅 **+0.011%**，可忽略 → 提交预测可信；
-- 随训练数据单调增加，预测性能单调提升，无过拟合退化。
+- 绝对 RMSE 随验证月份波动（0.0020~0.0032），主要源于不同月份目标波动率（regime）的差异；模型相对零预测基线的比值 **RMSE/base0 稳定在 0.991~0.994**，比绝对 RMSE 更能反映模型的跨折一致性。
 
 ### 3.3 特征剪枝
 
 - 71 维 → **40 维**即可达到几乎同等精度（RMSE 0.002486 vs 全量 0.002486）；
 - 高价值特征集中于「净持仓流 / 价差-中间价波动」类，长尾特征贡献趋零；Top 特征如 `t_net_vol_10s`、`m_spread_std`、`t_netvol_w30`。
+
+### 3.4 统计显著性检验与 seed 敏感性
+
+合并 6 折 walk-forward 的 743,695 个验证样本，检验「优于零预测基线」是否为噪声：
+
+| 检验 | 结果 | 结论 |
+|------|------|------|
+| Diebold-Mariano（HAC，lag≤5） | z = 26.3，p ≈ 0 | 显著优于零预测 |
+| 配对 Bootstrap（B=5000） | 损失差 95% CI = [9.0e-8, 1.0e-7]，不含 0 | 稳健排除噪声 |
+| Pearson 相关显著性 | r = 0.1207，95% CI = [0.118, 0.123]，z = 104.6 | 显著但微小 |
+
+- **seed 敏感性**：固定 155 轮、5 个 seed（42/0/1/7/123）重训末折（64–70），`RMSE/base0` 全部落在 **0.991~0.992**（均 < 1），说明「优于零预测」不依赖特定随机种子。
+- 结论：模型对真实目标有**统计显著但微弱**的边际预测力（相对零预测提升 ≈ 0.7%）。
 
 ---
 
@@ -157,7 +171,10 @@ python 09_fixed_rounds_cv.py
 python 10_feature_stability.py
 python 11_prune_scan.py
 
-# 7. 全量训练 + 测试推理 + 生成提交
+# 7. 统计显著性检验 + seed 敏感性
+python 12_significance.py
+
+# 8. 全量训练 + 测试推理 + 生成提交
 python 07_submission.py
 ```
 
@@ -180,10 +197,12 @@ python 07_submission.py
 ├── 09_fixed_rounds_cv.py      # 固定轮数去早停偏差
 ├── 10_feature_stability.py    # 特征重要性稳定性分析
 ├── 11_prune_scan.py           # Top-K 剪枝扫描
+├── 12_significance.py         # 统计显著性检验 + seed 敏感性
 ├── cv_results.csv             # 早停多折结果
 ├── cv_fixed_results.csv       # 固定轮多折结果
 ├── feature_stability.csv      # 特征稳定性表
 ├── prune_scan.csv             # 剪枝扫描结果
+├── significance_results.csv   # 显著性/seed 敏感性结果
 ├── pruned_features.txt        # 精炼后的特征子集
 └── submission.csv             # 最终提交文件
 ```

@@ -1,7 +1,7 @@
 """Strict fixed-rounds walk-forward CV (no early stopping) to remove selection bias.
 
 Same 6 folds as 08_multifold_cv.py, but every fold trains a FIXED number of
-rounds (155, matching the final submission) with NO validation-based early stop,
+rounds (155 = fold 5's early-stopping best_iteration) with NO validation-based early stop,
 so the validation fold is never used to select iterations. Compares against the
 early-stopping version to quantify the optimism bias.
 """

@@ -148,12 +148,9 @@ bagging_fraction=0.8, bagging_freq=1, lambda_l2=1.0, seed=42
   ```bash
   # Windows (PowerShell)
   $env:KAGGLE_DATA_DIR = "D:\data\ms-capital"
-
-  # Linux / macOS
-  export KAGGLE_DATA_DIR=/path/to/ms-capital
   ```
 
-- `parquet/`（转换中间产物）与 `features/`（聚合特征）等派生产物路径均相对仓库根目录推导，克隆到任意位置后开箱即用。
+- `parquet/`（转换中间产物）与 `features/`（聚合特征）等派生产物路径均相对仓库根目录推导，在 Windows 下克隆到任意位置后开箱即用。
 
 ### 步骤
 
